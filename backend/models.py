@@ -205,6 +205,8 @@ class HistoryResponse(BaseModel):
     status: str = "completed"
     error: Optional[str] = None
     is_favorited: bool = False
+    # Engine tuning knobs the row was generated with (see GenerationRequest).
+    engine_params: Optional[Dict[str, Any]] = None
     created_at: datetime
     versions: Optional[List["GenerationVersionResponse"]] = None
     active_version_id: Optional[str] = None

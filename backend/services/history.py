@@ -248,6 +248,7 @@ async def list_generations(
             status=generation.status or "completed",
             error=generation.error,
             is_favorited=bool(generation.is_favorited),
+            engine_params=load_engine_params(generation.engine_params),
             created_at=generation.created_at,
             versions=versions,
             active_version_id=active_version_id,

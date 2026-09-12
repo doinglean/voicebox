@@ -101,6 +101,7 @@ async def get_generation(
         status=gen.status or "completed",
         error=gen.error,
         is_favorited=bool(gen.is_favorited),
+        engine_params=history.load_engine_params(gen.engine_params),
         created_at=gen.created_at,
     )
 
