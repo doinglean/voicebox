@@ -42,8 +42,14 @@ async def run_generation(
     max_chunk_chars: Optional[int] = None,
     crossfade_ms: Optional[int] = None,
     version_id: Optional[str] = None,
+    engine_params: Optional[dict] = None,
 ) -> None:
     """Execute TTS inference and persist the result.
+
+    ``engine_params`` carries engine tuning knobs (e.g. Chatterbox
+    exaggeration / cfg_weight / temperature). They are forwarded to the
+    backend only when its ``generate()`` accepts them, so passing them for
+    an engine that has no such knobs is harmless.
 
     This is the single entry point for all background generation work.
     It is designed to be enqueued via ``services.task_queue.enqueue_generation``.
@@ -90,6 +96,8 @@ async def run_generation(
             gen_kwargs["max_chunk_chars"] = max_chunk_chars
         if crossfade_ms is not None:
             gen_kwargs["crossfade_ms"] = crossfade_ms
+        if engine_params:
+            gen_kwargs["engine_params"] = engine_params
 
         audio, sample_rate = await generate_chunked(tts_model, text, voice_prompt, **gen_kwargs)
 

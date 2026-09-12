@@ -171,6 +171,9 @@ class ChatterboxTTSBackend:
         language: str = "en",
         seed: Optional[int] = None,
         instruct: Optional[str] = None,
+        exaggeration: Optional[float] = None,
+        cfg_weight: Optional[float] = None,
+        temperature: Optional[float] = None,
     ) -> Tuple[np.ndarray, int]:
         """
         Generate audio using Chatterbox Multilingual TTS.
@@ -181,6 +184,10 @@ class ChatterboxTTSBackend:
             language: BCP-47 language code
             seed: Random seed for reproducibility
             instruct: Unused (protocol compatibility)
+            exaggeration: Emotion intensity 0..1 (None = per-language default)
+            cfg_weight: Guidance weight 0..1 — lower is freer/faster, higher
+                tracks the reference pacing (None = per-language default)
+            temperature: Sampling temperature (None = per-language default)
 
         Returns:
             Tuple of (audio_array, sample_rate)
@@ -192,8 +199,15 @@ class ChatterboxTTSBackend:
             logger.warning(f"Reference audio not found: {ref_audio}")
             ref_audio = None
 
-        # Merge language-specific defaults with global defaults
-        lang_defaults = self._LANG_DEFAULTS.get(language, self._GLOBAL_DEFAULTS)
+        # Merge language-specific defaults with global defaults, then apply
+        # any per-request overrides.
+        lang_defaults = dict(self._LANG_DEFAULTS.get(language, self._GLOBAL_DEFAULTS))
+        if exaggeration is not None:
+            lang_defaults["exaggeration"] = float(exaggeration)
+        if cfg_weight is not None:
+            lang_defaults["cfg_weight"] = float(cfg_weight)
+        if temperature is not None:
+            lang_defaults["temperature"] = float(temperature)
 
         def _generate_sync():
             import torch
@@ -201,7 +215,13 @@ class ChatterboxTTSBackend:
             if seed is not None:
                 manual_seed(seed, self._device)
 
-            logger.info(f"[Chatterbox] Generating: lang={language}")
+            logger.info(
+                "[Chatterbox] Generating: lang=%s exaggeration=%.2f cfg_weight=%.2f temperature=%.2f",
+                language,
+                lang_defaults["exaggeration"],
+                lang_defaults["cfg_weight"],
+                lang_defaults["temperature"],
+            )
 
             wav = self.model.generate(
                 text,

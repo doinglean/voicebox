@@ -9,6 +9,7 @@ Short text (≤ max_chunk_chars) uses the single-shot fast path with zero
 overhead.
 """
 
+import inspect
 import logging
 import re
 from typing import List, Tuple
@@ -203,6 +204,32 @@ def concatenate_audio_chunks(
     return result
 
 
+def accepted_engine_params(backend, engine_params: dict | None) -> dict:
+    """Keep only the tuning knobs ``backend.generate()`` actually accepts.
+
+    Backends declare their knobs as keyword parameters (Chatterbox:
+    ``exaggeration``, ``cfg_weight``, ``temperature``). Anything the target
+    backend does not declare is dropped rather than raising a TypeError
+    deep inside the generation queue.
+    """
+    if not engine_params:
+        return {}
+    try:
+        parameters = inspect.signature(backend.generate).parameters
+    except (TypeError, ValueError):
+        return {}
+    accepts_var_kw = any(p.kind is inspect.Parameter.VAR_KEYWORD for p in parameters.values())
+    kept = {
+        key: value
+        for key, value in engine_params.items()
+        if value is not None and (accepts_var_kw or key in parameters)
+    }
+    dropped = sorted(set(engine_params) - set(kept))
+    if dropped:
+        logger.info("%s ignores engine params %s", type(backend).__name__, dropped)
+    return kept
+
+
 async def generate_chunked(
     backend,
     text: str,
@@ -214,6 +241,7 @@ async def generate_chunked(
     crossfade_ms: int = 50,
     trim_fn=None,
     runaway_detector=None,
+    engine_params: dict | None = None,
 ) -> Tuple[np.ndarray, int]:
     """Generate audio with automatic chunking for long text.
 
@@ -245,11 +273,18 @@ async def generate_chunked(
     runaway_detector : callable | None
         Optional ``(audio, sample_rate) -> bool`` detector. When it flags
         unstable output, the affected text is split in half and retried.
+    engine_params : dict | None
+        Engine tuning knobs (e.g. ``exaggeration`` / ``cfg_weight`` /
+        ``temperature`` for Chatterbox). Only the keys that
+        ``backend.generate()`` declares are forwarded; the rest are dropped
+        with a log line, so callers can pass them engine-agnostically.
 
     Returns
     -------
     (audio, sample_rate) : Tuple[np.ndarray, int]
     """
+    extra_kwargs = accepted_engine_params(backend, engine_params)
+
     async def generate_one(
         chunk_text: str,
         chunk_seed: int | None,
@@ -261,6 +296,7 @@ async def generate_chunked(
             language,
             chunk_seed,
             instruct,
+            **extra_kwargs,
         )
 
         if runaway_detector is not None and runaway_detector(chunk_audio, chunk_sr):

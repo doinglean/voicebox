@@ -190,6 +190,9 @@ class MLXQwenLLMBackend:
         self.tokenizer = None
         self.model_size = model_size
         self._current_model_size: Optional[str] = None
+        # Serializes load-then-generate so a concurrent size switch can't
+        # swap the model out mid-request (see mlx_backend.MLXTTSBackend).
+        self._op_lock = asyncio.Lock()
 
     def is_loaded(self) -> bool:
         return self.model is not None
@@ -212,10 +215,18 @@ class MLXQwenLLMBackend:
         if self.model is not None and self._current_model_size == model_size:
             return
 
-        if self.model is not None and self._current_model_size != model_size:
-            self.unload_model()
+        # MLX streams are thread-local: unload + load run as ONE callable on
+        # the dedicated MLX worker thread (see backends/mlx_thread.py, #699).
+        from .mlx_thread import run_on_mlx_thread
 
-        await asyncio.to_thread(self._load_model_sync, model_size)
+        await run_on_mlx_thread(self._reload_sync, model_size)
+
+    def _reload_sync(self, model_size: str) -> None:
+        """Unload a mismatched model and load the requested one (MLX thread only)."""
+        if self.model is not None and self._current_model_size != model_size:
+            self._unload_model_sync()
+        if self.model is None:
+            self._load_model_sync(model_size)
 
     def _load_model_sync(self, model_size: str) -> None:
         from mlx_lm import load as mlx_load
@@ -239,6 +250,12 @@ class MLXQwenLLMBackend:
         logger.info("Qwen3 %s (MLX) loaded successfully", model_size)
 
     def unload_model(self) -> None:
+        """Unload the model. Safe from any thread — teardown runs on the MLX worker."""
+        from .mlx_thread import run_sync
+
+        run_sync(self._unload_model_sync)
+
+    def _unload_model_sync(self) -> None:
         if self.model is None:
             return
         del self.model
@@ -257,10 +274,18 @@ class MLXQwenLLMBackend:
         model_size: Optional[str] = None,
         examples: Optional[list[tuple[str, str]]] = None,
     ) -> str:
-        await self.load_model(model_size)
-        return await asyncio.to_thread(
-            self._generate_sync, prompt, system, max_tokens, temperature, examples
-        )
+        from .mlx_thread import run_on_mlx_thread
+
+        resolved_size = model_size if model_size is not None else self.model_size
+
+        def _reload_and_generate_sync() -> str:
+            """Load (if needed) and generate as ONE MLX-worker submission."""
+            if self.model is None or self._current_model_size != resolved_size:
+                self._reload_sync(resolved_size)
+            return self._generate_sync(prompt, system, max_tokens, temperature, examples)
+
+        async with self._op_lock:
+            return await run_on_mlx_thread(_reload_and_generate_sync)
 
     def _generate_sync(
         self,

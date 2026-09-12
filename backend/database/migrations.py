@@ -184,6 +184,8 @@ def _migrate_generations(engine, inspector, tables: set[str]) -> None:
             "source VARCHAR NOT NULL DEFAULT 'manual'",
             "source",
         )
+    if "engine_params" not in columns:
+        _add_column(engine, "generations", "engine_params TEXT", "engine_params")
 
 
 def _migrate_effect_presets(engine, inspector, tables: set[str]) -> None:

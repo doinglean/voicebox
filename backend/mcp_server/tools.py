@@ -50,6 +50,9 @@ def register_tools(mcp: FastMCP) -> None:
         personality: bool | None = None,
         language: str | None = None,
         model_size: Literal["1.7B", "0.6B", "1B", "3B"] | None = None,
+        exaggeration: float | None = None,
+        cfg_weight: float | None = None,
+        temperature: float | None = None,
     ) -> dict[str, Any]:
         """Speak ``text`` in a voice profile.
 
@@ -68,6 +71,13 @@ def register_tools(mcp: FastMCP) -> None:
         or "0.6B"; ``tada`` accepts "1B" or "3B". Other engines ignore it.
         Omit to use the engine default. Requesting a smaller variant (e.g.
         "0.6B") is faster and avoids reloading a heavier model between calls.
+
+        ``exaggeration`` (0..1, emotion intensity), ``cfg_weight`` (0..1,
+        lower = freer and faster, higher = closer to the reference pacing)
+        and ``temperature`` (0.05..2, take-to-take variation) tune the
+        ``chatterbox`` engine; ``chatterbox_turbo`` honours ``temperature``.
+        Other engines ignore them. Omit to keep the engine defaults
+        (0.5 / 0.5 / 0.8).
         """
         from ..database.models import MCPClientBinding
 
@@ -107,6 +117,9 @@ def register_tools(mcp: FastMCP) -> None:
                 language=language,
                 personality=use_persona,
                 model_size=model_size,
+                exaggeration=exaggeration,
+                cfg_weight=cfg_weight,
+                temperature=temperature,
                 db=db,
             )
         finally:
@@ -237,6 +250,9 @@ async def _speak(
     language: str | None,
     personality: bool,
     model_size: str | None = None,
+    exaggeration: float | None = None,
+    cfg_weight: float | None = None,
+    temperature: float | None = None,
     db,
 ) -> dict[str, Any]:
     """Delegate to POST /generate — the route handles personality-rewrite
@@ -253,6 +269,9 @@ async def _speak(
         engine=engine,
         personality=personality,
         model_size=model_size,
+        exaggeration=exaggeration,
+        cfg_weight=cfg_weight,
+        temperature=temperature,
     )
     generation = await generate_speech(req, db)
     return _speak_response(generation, profile_name, source="mcp")

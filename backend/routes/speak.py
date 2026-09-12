@@ -78,6 +78,9 @@ async def speak(
             language=data.language or "en",
             engine=engine,
             personality=bool(personality_flag),
+            exaggeration=data.exaggeration,
+            cfg_weight=data.cfg_weight,
+            temperature=data.temperature,
         ),
         db,
     )

@@ -11,6 +11,28 @@ from sqlalchemy.orm import Session
 from sqlalchemy import or_
 
 from ..models import GenerationRequest, GenerationResponse, HistoryQuery, HistoryResponse, HistoryListResponse, GenerationVersionResponse, EffectConfig
+
+
+def _dump_engine_params(engine_params: Optional[dict]) -> Optional[str]:
+    """Serialize engine tuning knobs for the ``generations.engine_params`` column."""
+    if not engine_params:
+        return None
+    import json
+
+    return json.dumps(engine_params)
+
+
+def load_engine_params(raw: Optional[str]) -> Optional[dict]:
+    """Inverse of ``_dump_engine_params`` — tolerant of NULL / corrupt values."""
+    if not raw:
+        return None
+    import json
+
+    try:
+        value = json.loads(raw)
+    except ValueError:
+        return None
+    return value if isinstance(value, dict) and value else None
 from ..database import Generation as DBGeneration, GenerationVersion as DBGenerationVersion, VoiceProfile as DBVoiceProfile
 from .. import config
 
@@ -66,6 +88,7 @@ async def create_generation(
     engine: Optional[str] = "qwen",
     model_size: Optional[str] = None,
     source: str = "manual",
+    engine_params: Optional[dict] = None,
 ) -> GenerationResponse:
     """
     Create a new generation history entry.
@@ -102,6 +125,7 @@ async def create_generation(
         instruct=instruct,
         engine=engine,
         model_size=model_size,
+        engine_params=_dump_engine_params(engine_params),
         status=status,
         source=source,
         created_at=datetime.utcnow(),

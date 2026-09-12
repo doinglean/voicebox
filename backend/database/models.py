@@ -74,6 +74,10 @@ class Generation(Base):
     instruct = Column(Text)
     engine = Column(String, default="qwen")
     model_size = Column(String, nullable=True)
+    # JSON text: engine tuning knobs (exaggeration / cfg_weight / temperature)
+    # the row was generated with, so retry/regenerate reproduce the same
+    # delivery. NULL when the caller left everything at the engine defaults.
+    engine_params = Column(Text, nullable=True)
     status = Column(String, default="completed")
     error = Column(Text, nullable=True)
     is_favorited = Column(Boolean, default=False)

@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from .. import config, models
 from ..services import history, personality, profiles, tts
+from ..services.history import load_engine_params
 from ..database import Generation as DBGeneration, VoiceProfile as DBVoiceProfile, get_db
 from ..services.generation import run_generation
 from ..services.task_queue import cancel_generation as cancel_generation_job, enqueue_generation
@@ -88,6 +89,8 @@ async def generate_speech(
             raise HTTPException(status_code=500, detail="LLM produced empty output; nothing to speak.")
         source = "personality_speak"
 
+    engine_params = data.engine_params()
+
     generation = await history.create_generation(
         profile_id=data.profile_id,
         text=text,
@@ -102,6 +105,7 @@ async def generate_speech(
         engine=engine,
         model_size=model_size if engine_has_model_sizes(engine) else None,
         source=source,
+        engine_params=engine_params,
     )
 
     task_manager.start_generation(
@@ -139,6 +143,7 @@ async def generate_speech(
             mode="generate",
             max_chunk_chars=data.max_chunk_chars,
             crossfade_ms=data.crossfade_ms,
+            engine_params=engine_params,
         )
     )
 
@@ -181,6 +186,7 @@ async def retry_generation(generation_id: str, db: Session = Depends(get_db)):
             seed=gen.seed,
             instruct=gen.instruct,
             mode="retry",
+            engine_params=load_engine_params(gen.engine_params),
         )
     )
 
@@ -226,6 +232,7 @@ async def regenerate_generation(generation_id: str, db: Session = Depends(get_db
             instruct=gen.instruct,
             mode="regenerate",
             version_id=version_id,
+            engine_params=load_engine_params(gen.engine_params),
         )
     )
 
@@ -374,6 +381,7 @@ async def stream_speech(
         crossfade_ms=data.crossfade_ms,
         trim_fn=trim_fn,
         runaway_detector=runaway_detector,
+        engine_params=data.engine_params(),
     )
 
     effects_chain_config = None

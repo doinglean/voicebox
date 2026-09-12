@@ -7,6 +7,7 @@ Forces CPU on macOS due to known MPS tensor issues.
 """
 
 import asyncio
+import inspect
 import logging
 import threading
 from pathlib import Path
@@ -153,6 +154,9 @@ class ChatterboxTurboTTSBackend:
         language: str = "en",
         seed: Optional[int] = None,
         instruct: Optional[str] = None,
+        exaggeration: Optional[float] = None,
+        cfg_weight: Optional[float] = None,
+        temperature: Optional[float] = None,
     ) -> Tuple[np.ndarray, int]:
         """
         Generate audio using Chatterbox Turbo TTS.
@@ -165,6 +169,9 @@ class ChatterboxTurboTTSBackend:
             language: Ignored (Turbo is English-only)
             seed: Random seed for reproducibility
             instruct: Unused (protocol compatibility)
+            exaggeration / cfg_weight: forwarded only when this Turbo build's
+                ``generate()`` declares them (older builds don't)
+            temperature: Sampling temperature (None = 0.8)
 
         Returns:
             Tuple of (audio_array, sample_rate)
@@ -184,14 +191,23 @@ class ChatterboxTurboTTSBackend:
 
             logger.info("[Chatterbox Turbo] Generating (English)")
 
-            wav = self.model.generate(
-                text,
+            gen_kwargs = dict(
                 audio_prompt_path=ref_audio,
-                temperature=0.8,
+                temperature=0.8 if temperature is None else float(temperature),
                 top_k=1000,
                 top_p=0.95,
                 repetition_penalty=1.2,
             )
+            try:
+                supported = inspect.signature(self.model.generate).parameters
+            except (TypeError, ValueError):
+                supported = {}
+            if exaggeration is not None and "exaggeration" in supported:
+                gen_kwargs["exaggeration"] = float(exaggeration)
+            if cfg_weight is not None and "cfg_weight" in supported:
+                gen_kwargs["cfg_weight"] = float(cfg_weight)
+
+            wav = self.model.generate(text, **gen_kwargs)
 
             # Convert tensor -> numpy
             if isinstance(wav, torch.Tensor):
