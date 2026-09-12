@@ -3,7 +3,7 @@ Pydantic models for request/response validation.
 """
 
 from pydantic import BaseModel, Field, field_validator
-from typing import Any, Dict, Optional, List
+from typing import Any, Optional, List
 from datetime import datetime
 
 from .utils.capture_chords import (
@@ -103,13 +103,13 @@ class GenerationRequest(BaseModel):
     # Engine tuning knobs. Only Chatterbox (and Chatterbox Turbo for
     # temperature) honour them; other engines ignore them. Omitted values
     # fall back to the backend's per-language defaults.
-    exaggeration: Optional[float] = Field(
+    exaggeration: float | None = Field(
         None,
         ge=0.0,
         le=1.0,
         description="Chatterbox only: emotion intensity (0 = flat, 1 = very expressive). Default 0.5.",
     )
-    cfg_weight: Optional[float] = Field(
+    cfg_weight: float | None = Field(
         None,
         ge=0.0,
         le=1.0,
@@ -118,14 +118,14 @@ class GenerationRequest(BaseModel):
             "higher = closer to the reference pacing. Default 0.5."
         ),
     )
-    temperature: Optional[float] = Field(
+    temperature: float | None = Field(
         None,
         ge=0.05,
         le=2.0,
         description="Chatterbox / Chatterbox Turbo: sampling temperature (variation between takes). Default 0.8.",
     )
 
-    def engine_params(self) -> Optional[Dict[str, float]]:
+    def engine_params(self) -> dict[str, float] | None:
         """Engine tuning knobs that were explicitly set, or None when untouched."""
         params = {
             key: value
@@ -158,7 +158,7 @@ class GenerationResponse(BaseModel):
     source: str = "manual"
     # Engine tuning knobs the row was generated with (see GenerationRequest).
     # Stored as JSON text on the row; exposed as a dict here.
-    engine_params: Optional[Dict[str, Any]] = None
+    engine_params: dict[str, Any] | None = None
     created_at: datetime
     versions: Optional[List["GenerationVersionResponse"]] = None
     active_version_id: Optional[str] = None
@@ -206,7 +206,7 @@ class HistoryResponse(BaseModel):
     error: Optional[str] = None
     is_favorited: bool = False
     # Engine tuning knobs the row was generated with (see GenerationRequest).
-    engine_params: Optional[Dict[str, Any]] = None
+    engine_params: dict[str, Any] | None = None
     created_at: datetime
     versions: Optional[List["GenerationVersionResponse"]] = None
     active_version_id: Optional[str] = None
@@ -419,13 +419,13 @@ class SpeakRequest(BaseModel):
         None,
         pattern="^(zh|en|ja|ko|de|fr|ru|pt|es|it|he|ar|da|el|fi|hi|ms|nl|no|pl|sv|sw|tr)$",
     )
-    exaggeration: Optional[float] = Field(
+    exaggeration: float | None = Field(
         None, ge=0.0, le=1.0, description="Chatterbox only: emotion intensity (0 = flat, 1 = very expressive)."
     )
-    cfg_weight: Optional[float] = Field(
+    cfg_weight: float | None = Field(
         None, ge=0.0, le=1.0, description="Chatterbox only: guidance weight (lower = freer/faster, higher = closer to reference)."
     )
-    temperature: Optional[float] = Field(
+    temperature: float | None = Field(
         None, ge=0.05, le=2.0, description="Chatterbox / Chatterbox Turbo: sampling temperature."
     )
 

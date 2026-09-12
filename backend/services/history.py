@@ -11,9 +11,11 @@ from sqlalchemy.orm import Session
 from sqlalchemy import or_
 
 from ..models import GenerationRequest, GenerationResponse, HistoryQuery, HistoryResponse, HistoryListResponse, GenerationVersionResponse, EffectConfig
+from ..database import Generation as DBGeneration, GenerationVersion as DBGenerationVersion, VoiceProfile as DBVoiceProfile
+from .. import config
 
 
-def _dump_engine_params(engine_params: Optional[dict]) -> Optional[str]:
+def _dump_engine_params(engine_params: dict | None) -> str | None:
     """Serialize engine tuning knobs for the ``generations.engine_params`` column."""
     if not engine_params:
         return None
@@ -22,7 +24,7 @@ def _dump_engine_params(engine_params: Optional[dict]) -> Optional[str]:
     return json.dumps(engine_params)
 
 
-def load_engine_params(raw: Optional[str]) -> Optional[dict]:
+def load_engine_params(raw: str | None) -> dict | None:
     """Inverse of ``_dump_engine_params`` — tolerant of NULL / corrupt values."""
     if not raw:
         return None
@@ -33,8 +35,6 @@ def load_engine_params(raw: Optional[str]) -> Optional[dict]:
     except ValueError:
         return None
     return value if isinstance(value, dict) and value else None
-from ..database import Generation as DBGeneration, GenerationVersion as DBGenerationVersion, VoiceProfile as DBVoiceProfile
-from .. import config
 
 
 def _get_versions_for_generation(generation_id: str, db: Session) -> tuple:
@@ -88,7 +88,7 @@ async def create_generation(
     engine: Optional[str] = "qwen",
     model_size: Optional[str] = None,
     source: str = "manual",
-    engine_params: Optional[dict] = None,
+    engine_params: dict | None = None,
 ) -> GenerationResponse:
     """
     Create a new generation history entry.
