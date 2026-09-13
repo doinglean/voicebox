@@ -127,6 +127,9 @@ async def generate_speech(
             except Exception:
                 pass
 
+    # `speed` is sugar for a trailing pitch-preserving tempo effect.
+    effects_chain_config = models.with_speed(effects_chain_config, data.speed)
+
     enqueue_generation(
         generation_id,
         run_generation(
@@ -395,6 +398,7 @@ async def stream_speech(
         except Exception:
             effects_chain_config = None
 
+    effects_chain_config = models.with_speed(effects_chain_config, data.speed)
     if effects_chain_config:
         from ..utils.effects import apply_effects
 

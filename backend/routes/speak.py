@@ -81,6 +81,7 @@ async def speak(
             exaggeration=data.exaggeration,
             cfg_weight=data.cfg_weight,
             temperature=data.temperature,
+            speed=data.speed,
         ),
         db,
     )

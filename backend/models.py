@@ -124,6 +124,15 @@ class GenerationRequest(BaseModel):
         le=2.0,
         description="Chatterbox / Chatterbox Turbo: sampling temperature (variation between takes). Default 0.8.",
     )
+    speed: float | None = Field(
+        None,
+        ge=0.5,
+        le=1.5,
+        description=(
+            "Playback speed, any engine: 1.0 = unchanged, 0.85 = 15% slower, 1.2 = 20% faster. "
+            "Applied after synthesis as a pitch-preserving 'tempo' effect appended to the effects chain."
+        ),
+    )
 
     def engine_params(self) -> dict[str, float] | None:
         """Engine tuning knobs that were explicitly set, or None when untouched."""
@@ -427,6 +436,9 @@ class SpeakRequest(BaseModel):
     )
     temperature: float | None = Field(
         None, ge=0.05, le=2.0, description="Chatterbox / Chatterbox Turbo: sampling temperature."
+    )
+    speed: float | None = Field(
+        None, ge=0.5, le=1.5, description="Playback speed (pitch-preserving), any engine: 1.0 = unchanged, <1 slower."
     )
 
 
@@ -878,3 +890,16 @@ class CloudStatusResponse(BaseModel):
     key_prefix: Optional[str] = None
     connected_at: Optional[datetime] = None
     dashboard_url: str
+
+
+def with_speed(effects_chain: list[dict] | None, speed: float | None) -> list[dict] | None:
+    """Append a pitch-preserving ``tempo`` effect for ``speed`` to an effects chain.
+
+    ``speed`` of ``None`` or ``1.0`` leaves the chain untouched (and keeps
+    ``None`` as ``None`` so callers can tell "no effects" from "empty chain").
+    """
+    if speed is None or abs(float(speed) - 1.0) < 1e-4:
+        return effects_chain
+    chain = list(effects_chain or [])
+    chain.append({"type": "tempo", "enabled": True, "params": {"speed": float(speed)}})
+    return chain

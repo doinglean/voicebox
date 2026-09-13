@@ -15,6 +15,12 @@ Supported effect types:
   - highpass     (high-pass filter)
   - lowpass      (low-pass filter)
   - pitch_shift (semitone pitch shifting)
+  - tempo       (time stretch: speed up / slow down without changing pitch)
+
+Most effects are pedalboard plugins (``cls``). ``tempo`` is a *function*
+effect (``fn``) because time stretching changes the buffer length, which a
+plugin chain can't do; ``apply_effects`` runs the chain in order and
+flushes the accumulated plugins around every function effect.
 """
 
 from __future__ import annotations
@@ -32,7 +38,19 @@ from pedalboard import (
     LowpassFilter,
     Delay,
     PitchShift,
+    time_stretch,
 )
+
+
+def _tempo(audio: np.ndarray, sample_rate: int, *, speed: float = 1.0) -> np.ndarray:
+    """Change playback speed without changing pitch (Rubber Band via pedalboard).
+
+    ``speed`` 1.0 leaves the audio untouched, 0.85 makes it 15 % slower and
+    longer, 1.2 makes it 20 % faster and shorter.
+    """
+    if abs(float(speed) - 1.0) < 1e-4:
+        return audio
+    return time_stretch(audio.astype(np.float32), sample_rate, stretch_factor=float(speed))
 
 
 # Each param definition: (default, min, max, description)
@@ -142,6 +160,20 @@ EFFECT_REGISTRY: Dict[str, Dict[str, Any]] = {
         "description": "Shift pitch up or down by semitones.",
         "params": {
             "semitones": {"default": 0.0, "min": -12.0, "max": 12.0, "step": 0.5, "description": "Semitones to shift"},
+        },
+    },
+    "tempo": {
+        "fn": _tempo,
+        "label": "Tempo",
+        "description": "Slow down or speed up the speech without changing its pitch. 1.0 = unchanged, 0.85 = 15% slower, 1.2 = 20% faster.",
+        "params": {
+            "speed": {
+                "default": 1.0,
+                "min": 0.5,
+                "max": 1.5,
+                "step": 0.01,
+                "description": "Speed factor (1.0 = unchanged, <1 slower, >1 faster)",
+            },
         },
     },
 }
@@ -315,26 +347,30 @@ def validate_effects_chain(effects_chain: List[Dict[str, Any]]) -> Optional[str]
     return None
 
 
+def _effect_params(effect: dict[str, Any]) -> dict[str, Any]:
+    """Merge the registry defaults with the params given on the effect."""
+    registry = EFFECT_REGISTRY[effect["type"]]
+    given = effect.get("params", {}) or {}
+    return {pname: given.get(pname, pdef["default"]) for pname, pdef in registry["params"].items()}
+
+
 def build_pedalboard(effects_chain: List[Dict[str, Any]]) -> Pedalboard:
     """Build a Pedalboard instance from an effects chain config.
 
-    Skips effects where ``enabled`` is ``False``.
+    Skips effects where ``enabled`` is ``False`` and function effects such
+    as ``tempo`` (those only run through ``apply_effects``, which keeps the
+    chain order intact).
     """
     plugins = []
     for effect in effects_chain:
         if not effect.get("enabled", True):
             continue
 
-        effect_type = effect["type"]
-        registry = EFFECT_REGISTRY[effect_type]
-        cls = registry["cls"]
-
-        # Merge defaults with provided params
-        params = {}
-        for pname, pdef in registry["params"].items():
-            params[pname] = effect.get("params", {}).get(pname, pdef["default"])
-
-        plugins.append(cls(**params))
+        registry = EFFECT_REGISTRY[effect["type"]]
+        cls = registry.get("cls")
+        if cls is None:
+            continue
+        plugins.append(cls(**_effect_params(effect)))
 
     return Pedalboard(plugins)
 
@@ -357,15 +393,34 @@ def apply_effects(
     if not effects_chain:
         return audio
 
-    board = build_pedalboard(effects_chain)
-
     # pedalboard expects shape (channels, samples)
     if audio.ndim == 1:
-        audio_2d = audio[np.newaxis, :]
+        processed = audio[np.newaxis, :].astype(np.float32)
     else:
-        audio_2d = audio
+        processed = audio.astype(np.float32)
 
-    processed = board(audio_2d.astype(np.float32), sample_rate)
+    # Run the chain in order: consecutive plugin effects are batched into one
+    # Pedalboard; a function effect (e.g. ``tempo``) flushes that batch, runs
+    # on the buffer, and a fresh batch starts after it.
+    pending: list[Any] = []
+
+    def _flush() -> None:
+        nonlocal processed, pending
+        if pending:
+            processed = Pedalboard(pending)(processed, sample_rate)
+            pending = []
+
+    for effect in effects_chain:
+        if not effect.get("enabled", True):
+            continue
+        registry = EFFECT_REGISTRY[effect["type"]]
+        params = _effect_params(effect)
+        if registry.get("cls") is not None:
+            pending.append(registry["cls"](**params))
+        else:
+            _flush()
+            processed = registry["fn"](processed, sample_rate, **params)
+    _flush()
 
     # Return same dimensionality as input
     if audio.ndim == 1:

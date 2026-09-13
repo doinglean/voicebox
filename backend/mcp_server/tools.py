@@ -53,6 +53,7 @@ def register_tools(mcp: FastMCP) -> None:
         exaggeration: float | None = None,
         cfg_weight: float | None = None,
         temperature: float | None = None,
+        speed: float | None = None,
     ) -> dict[str, Any]:
         """Speak ``text`` in a voice profile.
 
@@ -78,6 +79,10 @@ def register_tools(mcp: FastMCP) -> None:
         ``chatterbox`` engine; ``chatterbox_turbo`` honours ``temperature``.
         Other engines ignore them. Omit to keep the engine defaults
         (0.5 / 0.5 / 0.8).
+
+        ``speed`` (0.5..1.5) works with every engine: the finished audio is
+        time-stretched without changing pitch, so 0.85 is 15 % slower and
+        1.2 is 20 % faster. Omit (or 1.0) for the natural pace.
         """
         from ..database.models import MCPClientBinding
 
@@ -120,6 +125,7 @@ def register_tools(mcp: FastMCP) -> None:
                 exaggeration=exaggeration,
                 cfg_weight=cfg_weight,
                 temperature=temperature,
+                speed=speed,
                 db=db,
             )
         finally:
@@ -253,6 +259,7 @@ async def _speak(
     exaggeration: float | None = None,
     cfg_weight: float | None = None,
     temperature: float | None = None,
+    speed: float | None = None,
     db,
 ) -> dict[str, Any]:
     """Delegate to POST /generate — the route handles personality-rewrite
@@ -272,6 +279,7 @@ async def _speak(
         exaggeration=exaggeration,
         cfg_weight=cfg_weight,
         temperature=temperature,
+        speed=speed,
     )
     generation = await generate_speech(req, db)
     return _speak_response(generation, profile_name, source="mcp")
